@@ -1,0 +1,7 @@
+{
+  "mode": "maintenance",
+  "privateDns": "9t1y9sakh9.cloudflare-gateway.com",
+  "hardDisableAdb": false,
+  "hardDisableReset": false,
+  "extraBlockedPackages": []
+}
