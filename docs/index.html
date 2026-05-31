@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Waze Phone Dashboard</title>
+  <style>
+    :root{--bg:#0f172a;--card:#111827;--muted:#9ca3af;--text:#f9fafb;--blue:#2563eb;--green:#16a34a;--red:#dc2626;--amber:#d97706;--line:#334155}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:linear-gradient(135deg,#0f172a,#1e293b);color:var(--text)}
+    .wrap{max-width:1000px;margin:auto;padding:28px}.hero{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+    h1{margin:0;font-size:38px;letter-spacing:-.04em} h2{margin:0 0 12px}.muted,p{color:var(--muted);line-height:1.5}.card{background:rgba(17,24,39,.92);border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:22px;margin:18px 0;box-shadow:0 22px 50px rgba(0,0,0,.28)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+    input,textarea{width:100%;background:#020617;color:var(--text);border:1px solid var(--line);border-radius:14px;padding:12px;font:14px ui-monospace,SFMono-Regular,Menlo,monospace}textarea{min-height:230px}
+    button{border:0;border-radius:14px;padding:12px 15px;color:white;font-weight:800;cursor:pointer;margin:6px 6px 6px 0}.blue{background:var(--blue)}.green{background:var(--green)}.red{background:var(--red)}.gray{background:#374151}.amber{background:var(--amber)}
+    .bigbtn{width:100%;text-align:left;padding:18px;border-radius:18px}.bigbtn span{display:block;font-size:13px;opacity:.8;font-weight:500;margin-top:4px}.pill{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:#020617;border:1px solid var(--line);color:#cbd5e1;font-size:13px;font-weight:700}.warn{border-color:rgba(220,38,38,.6);background:rgba(127,29,29,.18)}code{background:#020617;padding:2px 6px;border-radius:8px;color:#bfdbfe}#toast{position:fixed;right:20px;bottom:20px;background:#020617;color:white;padding:14px 16px;border-radius:14px;border:1px solid var(--line);display:none;max-width:360px}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero"><div><h1>Waze Phone Dashboard</h1><p>Control the phone by publishing <code>policy.json</code>. The Android app pulls this file and applies the mode.</p></div><div class="pill" id="status">Ready</div></div>
+
+  <div class="grid">
+    <div class="card"><h2>Mode</h2><button class="bigbtn green" onclick="setMode('maintenance')">Maintenance Mode <span>Unlock installs, uninstall, ADB/dev options, reset.</span></button><button class="bigbtn blue" onclick="setMode('lockdown')">Lockdown Mode <span>Apply Waze-only restrictions.</span></button><button class="bigbtn gray" onclick="setMode('none')">No Change <span>Phone fetches policy but does nothing.</span></button></div>
+    <div class="card"><h2>Safety</h2><label><input type="checkbox" id="hardAdb" style="width:auto"> Hard-disable ADB/dev options</label><label><input type="checkbox" id="hardReset" style="width:auto"> Hard-disable reset/safe boot</label><p>Leave both off unless this is final deployment and you have tested rescue paths.</p><label>Reset phone admin PIN remotely, optional</label><input id="resetPin" placeholder="Leave blank unless needed"></div>
+  </div>
+
+  <div class="card"><h2>Policy Settings</h2><div class="grid"><div><label>Private DNS hostname</label><input id="privateDns" value="9t1y9sakh9.cloudflare-gateway.com"></div><div><label>Extra blocked packages, one per line</label><textarea id="extraPkgs" style="min-height:120px" placeholder="com.example.browser"></textarea></div></div><button class="blue" onclick="buildJson()">Build JSON</button><button class="gray" onclick="copyJson()">Copy JSON</button><button class="gray" onclick="downloadJson()">Download policy.json</button></div>
+
+  <div class="card"><h2>GitHub Save</h2><p>Use a fine-grained GitHub token with Contents read/write for this repo only. It is stored only in this browser.</p><div class="grid"><div><label>Owner</label><input id="owner" value="Ozer251"></div><div><label>Repo</label><input id="repo" value="Waze-Phone"></div><div><label>Branch</label><input id="branch" value="main"></div><div><label>Policy path</label><input id="path" value="docs/policy.json"></div></div><label>GitHub token</label><input id="token" type="password" placeholder="github_pat_..."><button class="gray" onclick="saveSettings()">Save Settings</button><button class="blue" onclick="loadFromGithub()">Load Current Policy</button><button class="green" onclick="saveToGithub()">Publish Policy to GitHub</button></div>
+
+  <div class="card"><h2>Raw policy.json</h2><textarea id="json"></textarea></div>
+  <div class="card"><h2>Phone Remote URL</h2><p>Paste this into the Android app:</p><input id="phoneUrl" readonly><button class="gray" onclick="copyPhoneUrl()">Copy Phone URL</button></div>
+  <div class="card warn"><h2>Important</h2><p>Do not put your GitHub token in <code>policy.json</code>. The token belongs only in this browser dashboard. Keep <code>hardDisableAdb</code> and <code>hardDisableReset</code> false while testing.</p></div>
+</div>
+<div id="toast"></div>
+<script>
+const defaultPolicy={mode:'maintenance',privateDns:'9t1y9sakh9.cloudflare-gateway.com',hardDisableAdb:false,hardDisableReset:false,extraBlockedPackages:[]};let currentSha=null;const $=id=>document.getElementById(id);function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',3500)}
+function loadSettings(){for(const id of ['owner','repo','branch','path','token']){const v=localStorage.getItem('wl_'+id);if(v)$ (id).value=v}updatePhoneUrl()}function saveSettings(){for(const id of ['owner','repo','branch','path','token'])localStorage.setItem('wl_'+id,$(id).value.trim());updatePhoneUrl();toast('Settings saved.')}function updatePhoneUrl(){const o=$('owner').value.trim()||'USERNAME',r=$('repo').value.trim()||'REPO';$('phoneUrl').value=`https://${o}.github.io/${r}/policy.json`}
+function getPolicy(){try{return JSON.parse($('json').value)}catch(e){return {...defaultPolicy}}}function renderPolicy(p){$('json').value=JSON.stringify(p,null,2);$('privateDns').value=p.privateDns||defaultPolicy.privateDns;$('hardAdb').checked=!!p.hardDisableAdb;$('hardReset').checked=!!p.hardDisableReset;$('resetPin').value=p.resetPin||'';$('extraPkgs').value=(p.extraBlockedPackages||[]).join('\n')}function setMode(m){const p=getPolicy();p.mode=m;if(m!=='lockdown'){p.hardDisableAdb=false;p.hardDisableReset=false}renderPolicy(p);toast('Mode set to '+m)}
+function buildJson(){const p=getPolicy();p.privateDns=$('privateDns').value.trim();p.hardDisableAdb=$('hardAdb').checked;p.hardDisableReset=$('hardReset').checked;const pin=$('resetPin').value.trim();if(pin)p.resetPin=pin;else delete p.resetPin;p.extraBlockedPackages=$('extraPkgs').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);renderPolicy(p);toast('JSON built.')}async function copyJson(){await navigator.clipboard.writeText($('json').value);toast('JSON copied.')}function downloadJson(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([$('json').value],{type:'application/json'}));a.download='policy.json';a.click()}async function copyPhoneUrl(){await navigator.clipboard.writeText($('phoneUrl').value);toast('Phone URL copied.')}
+function ghHeaders(){const token=$('token').value.trim();if(!token)throw new Error('Missing GitHub token.');return {'Accept':'application/vnd.github+json','Authorization':'Bearer '+token,'X-GitHub-Api-Version':'2022-11-28'}}function apiUrl(){const owner=$('owner').value.trim(),repo=$('repo').value.trim(),path=$('path').value.trim();if(!owner||!repo||!path)throw new Error('Owner, repo, and path are required.');return `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path).replaceAll('%2F','/')}`}
+async function loadFromGithub(){try{saveSettings();const branch=$('branch').value.trim()||'main';const res=await fetch(apiUrl()+`?ref=${encodeURIComponent(branch)}`,{headers:ghHeaders()});const data=await res.json();if(!res.ok)throw new Error(data.message||'GitHub load failed');currentSha=data.sha;const text=decodeURIComponent(escape(atob(data.content.replace(/\n/g,''))));renderPolicy(JSON.parse(text));$('status').textContent='Loaded from GitHub';toast('Loaded current policy.')}catch(e){toast(e.message);$('status').textContent='Error'}}
+async function saveToGithub(){try{saveSettings();buildJson();const branch=$('branch').value.trim()||'main';if(!currentSha){try{await loadFromGithub()}catch(e){}}const body={message:'Update Waze phone policy',content:btoa(unescape(encodeURIComponent($('json').value))),branch};if(currentSha)body.sha=currentSha;const res=await fetch(apiUrl(),{method:'PUT',headers:{...ghHeaders(),'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw new Error(data.message||'GitHub save failed');currentSha=data.content.sha;$('status').textContent='Published';toast('Published policy to GitHub.')}catch(e){toast(e.message);$('status').textContent='Error'}}
+renderPolicy(defaultPolicy);loadSettings();
+</script>
+</body>
+</html>
